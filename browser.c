@@ -130,6 +130,10 @@ int controller_process(comm_channel *channel) {
 	// Create controler window
 	create_browser(CONTROLLER_TAB, 0, G_CALLBACK(create_new_tab_cb), G_CALLBACK(uri_entered_cb), &b_window, channel);
 	show_browser();
+	req_type tab_msg = TAB_KILLED;
+	int cur_tab_num = 0;
+	write(channel->child_to_parent_fd[1], &tab_msg, sizeof(tab_msg));
+	write(channel->child_to_parent_fd[1], &cur_tab_num, sizeof(int));
 	return 0;
 }
 
