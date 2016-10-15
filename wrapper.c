@@ -81,7 +81,7 @@ void create_labeled_tab(void* cb_data) {
 }
 
 // display popup alert box
-void alert(gchar* msg) 
+void alert(gchar* msg) {
   
 	GtkWidget* dialog = gtk_dialog_new_with_buttons("Message", 
 		NULL,
