@@ -197,6 +197,10 @@ int router_process() {
 
 				break;
 				case NEW_URI_ENTERED:
+					char * uri;
+					int tab_index;
+					read(channel[0]->child_to_parent_fd[0], &uri, MSGSIZE);
+					read(channel[0]->child_to_parent_fd[0], &tab_index, sizeof(int));
 
 				break;
 				case TAB_KILLED:
