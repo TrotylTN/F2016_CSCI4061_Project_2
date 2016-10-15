@@ -99,7 +99,10 @@ int url_rendering_process(int tab_index, comm_channel *channel) {
 	browser_window * b_window = NULL;
 	// Create url-rendering window
 	create_browser(URL_RENDERING_TAB, tab_index, G_CALLBACK(create_new_tab_cb), G_CALLBACK(uri_entered_cb), &b_window, channel);
-	child_req_to_parent req;
+	// child_req_to_parent req;
+	int flags, nread;
+	flags = fcntl(channel->parent_to_child_fd[0], F_GETFL, 0);
+	fcntl(channel->parent_to_child_fd[0], F_SETFL, flags | O_NONBLOCK);
 	while (1) {
 		// Handle one gtk event, you don't need to change it nor understand what it does.
 		process_single_gtk_event();
@@ -107,6 +110,22 @@ int url_rendering_process(int tab_index, comm_channel *channel) {
 		// It is unnecessary to poll requests unstoppably, that will consume too much CPU time
 		// Sleep some time, e.g. 1 ms, and render CPU to other processes
 		usleep(1000);
+		req_type req_temp;
+		nread = read(channel->parent_to_child_fd[0], &req_temp, sizeof(req_type));
+		if (nread != -1) {
+			switch (req_temp) {
+				case CREATE_TAB:
+					fprintf(stderr, "Error: CREATE_TAB should not be received by normal tab\n");
+				break;
+				case NEW_URI_ENTERED:
+					//Annelies part
+				break;
+				case TAB_KILLED:
+					process_all_gtk_events();
+					return 0;
+				break;
+			}
+		}
 		// Append your code here
 		// Try to read data sent from ROUTER
 		// If no data being read, go back to the while loop
@@ -217,7 +236,7 @@ int router_process() {
 				// have message income
 				int tab_num;
 				req_type req_temp;
-				tab_killed_req kill_msg;
+				new_uri_req uri_temp;
 				switch (tab_msg) {
 					case CREATE_TAB:
 						if (id != 0) {
@@ -271,12 +290,37 @@ int router_process() {
 						}
 						else {
 							//Annelies part
+							read(channel[tab_num]->child_to_parent_fd[0], &uri_temp, sizeof(new_uri_req));
+							//uri_temp is the packet sent from the domain-region
 
 						}
 					break;
 
 					case TAB_KILLED:
-
+						req_temp = TAB_KILLED;
+						fprintf(stderr, "Killing msg received from %d\n", id);
+						if (id != 0) {
+							if (tab_pid_array[id] != 0) {
+								write(channel[id]->parent_to_child_fd[1], &req_temp, sizeof(req_type));
+								waitpid(tab_pid_array[id], NULL, 0);
+								free(channel[id]);
+								tab_pid_array[id] = 0;
+							}
+						}
+						else {
+							waitpid(tab_pid_array[0], NULL, 0);
+							free(channel[id]);
+							tab_pid_array[id] = 0;
+							for (i = 1; i < MAX_TAB; i++) {
+								if (tab_pid_array[i] != 0) {
+									write(channel[i]->parent_to_child_fd[1], &req_temp, sizeof(req_type));
+									waitpid(tab_pid_array[i], NULL, 0);
+									free(channel[i]);
+									tab_pid_array[i] = 0;
+								}
+							}
+							return 0;
+						}
 					break;
 				}
 			}
