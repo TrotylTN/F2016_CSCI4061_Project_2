@@ -15,20 +15,17 @@ void delete_tab_clicked_cb(GtkButton *button, gpointer data);
 void create_add_remove_tab_button(char* label, void (*g_callback)(void), void* cb_data);
 void show_browser();
 
-typedef struct comm_channel
-{
+typedef struct comm_channel {
 	int parent_to_child_fd[2];
 	int child_to_parent_fd[2];	
 }comm_channel;
 
-typedef enum tab_type
-{
-        CONTROLLER_TAB,
-        URL_RENDERING_TAB
+typedef enum tab_type {
+				CONTROLLER_TAB,
+				URL_RENDERING_TAB
 }tab_type;
 
-typedef struct browser_window
-{
+typedef struct browser_window {
 	WebKitWebView *web_view;
 	GtkWidget	*uri_entry;
 	GtkWidget 	*tab_selector;
@@ -39,37 +36,31 @@ typedef struct browser_window
 	tab_type	type; 
 }browser_window;
 
-typedef enum req_type
-{
+typedef enum req_type {
 	CREATE_TAB,
 	NEW_URI_ENTERED,
 	TAB_KILLED
 }req_type;
 
-typedef struct tab_killed_req
-{
+typedef struct tab_killed_req {
 	int tab_index;
 }tab_killed_req;
 
-typedef struct create_new_tab_req
-{
+typedef struct create_new_tab_req {
 }create_new_tab_req;
 
-typedef struct new_uri_req
-{
+typedef struct new_uri_req {
 	char uri[512];
 	int render_in_tab;
 }new_uri_req;
 
-typedef union
-{
+typedef union {
 	create_new_tab_req new_tab_req;
 	new_uri_req	uri_req;
 	tab_killed_req  killed_req;
 }child_request;
 
-typedef struct child_req_to_parent
-{
+typedef struct child_req_to_parent {
 	req_type type;
 	child_request req;
 }child_req_to_parent;
