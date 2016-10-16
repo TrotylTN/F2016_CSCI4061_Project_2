@@ -175,6 +175,22 @@ void kill_all_child(int tab_pid_array[MAX_TAB],comm_channel *channel[MAX_TAB]) {
 	}
 }
 
+int init_pipe(comm_channel **channel) {
+	int flags;
+	*channel = (comm_channel *) malloc(sizeof(comm_channel));
+	if (pipe((*channel)->child_to_parent_fd) == -1) {
+		perror("pipe error");
+		return -1;
+	}
+	flags = fcntl((*channel)->child_to_parent_fd[0], F_GETFL, 0);
+	fcntl((*channel)->child_to_parent_fd[0], F_SETFL, flags | O_NONBLOCK);
+	if (pipe((*channel)->parent_to_child_fd) == -1) {
+		perror("pipe error");
+		return -1;
+	}
+	return 0;
+}
+
 /*
  * Name:				router_process
  * Input arguments:	 none
@@ -200,23 +216,36 @@ int router_process() {
 	// Append your code here
 	memset(tab_pid_array, 0, sizeof(tab_pid_array));
 	// Prepare communication pipes with the CONTROLLER process
-	int nread, flags;
-	channel[0] = (comm_channel *) malloc(sizeof(comm_channel));
-	if (pipe(channel[0]->child_to_parent_fd) == -1) {
-		perror("pipe error");
+	int nread;
+	int init_res = init_pipe(&channel[0]);
+	if (init_res == -1) {
 		return -1;
 	}
-	flags = fcntl(channel[0]->child_to_parent_fd[0], F_GETFL, 0);
-	fcntl(channel[0]->child_to_parent_fd[0], F_SETFL, flags | O_NONBLOCK);
-	if (pipe(channel[0]->parent_to_child_fd) == -1) {
-		perror("pipe error");
-		return -1;
-	}
-
 	// Fork the CONTROLLER process
 	int pid = fork();
 	if (pid == 0) { //child
-		controller_process(channel[0]);
+		// this is guard-processor for the controller.
+		int guard_pid = fork();
+		if (guard_pid == 0) { // sub-child
+			controller_process(channel[0]);
+			exit(0);
+		}
+		else if (guard_pid > 0){ //guard-processor
+			int status;
+			waitpid(guard_pid, &status, 0);
+			if (status != 0) { //unexpected quit
+				child_req_to_parent new_req;
+				new_req.type = TAB_KILLED;
+				new_req.req.killed_req.tab_index = 0;
+				fprintf(stderr, "Controller unexpected quit\n");
+				fprintf(stderr, "Guard-processor is sending killing msg as Controller\n");
+				write(channel[0]->child_to_parent_fd[1], &new_req, sizeof(new_req));
+			}
+		}
+		else {
+			perror("fork error in guard-processor");
+			return -1;
+		}
 		exit(0);
 	}
 	else if (pid > 0) { //parent
@@ -228,6 +257,8 @@ int router_process() {
 		perror("fork error");
 		return -1;
 	}
+
+
 	//   call controller_process() in the forked CONTROLLER process
 	// Don't forget to close pipe fds which are unused by this process
 	// Poll child processes' communication channels using non-blocking pipes.
@@ -236,14 +267,15 @@ int router_process() {
 	// are created, you would also need to poll their communication pipe.
 	int id = 0;
 	child_req_to_parent req_from_child;
-	while (true) {
+	while (1) {
+		usleep(1000);
 		for (id = 0; id < MAX_TAB; id++) {
 			if (tab_pid_array[id] == 0) {
 				continue;
 			}
 			nread = read(channel[id]->child_to_parent_fd[0], &req_from_child, sizeof(child_req_to_parent));
 			if (nread == -1) {
-				// fprintf(stderr, "No message income\n");
+				// no message income
 			}
 			else {
 				// have message income
@@ -266,15 +298,8 @@ int router_process() {
 							}
 							fprintf(stderr, "Create tab %d\n", tab_num);
 
-							channel[tab_num] = (comm_channel *) malloc(sizeof(comm_channel));
-							if (pipe(channel[tab_num]->child_to_parent_fd) == -1) {
-								perror("pipe error");
-								return -1;
-							}
-							flags = fcntl(channel[tab_num]->child_to_parent_fd[0], F_GETFL, 0);
-							fcntl(channel[tab_num]->child_to_parent_fd[0], F_SETFL, flags | O_NONBLOCK);
-							if (pipe(channel[tab_num]->parent_to_child_fd) == -1) {
-								perror("pipe error");
+							init_res = init_pipe(&channel[tab_num]);
+							if (init_res == -1) {
 								return -1;
 							}
 
@@ -334,7 +359,6 @@ int router_process() {
 				}
 			}
 		}
-		usleep(1000);
 	}
 	//   * sleep some time if no message received
 	//   * if message received, handle it:
