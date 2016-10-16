@@ -8,7 +8,7 @@
 #include <errno.h>
 
 #define MAX_TAB 100
-#define MSGSIZE 1024
+
 extern int errno;
 
 /*
@@ -32,8 +32,8 @@ void uri_entered_cb(GtkWidget* entry, gpointer data) {
 	comm_channel channel = b_window->channel;
 	// Get the tab index where the URL is to be rendered
 	int tab_index = query_tab_id_for_request(entry, data);
-	if(tab_index <= 0) {
-		fprintf(stderr, "Invalid tab index (%d).", tab_index);
+	if(tab_index <= 0 || tab_index >= MAX_TAB) {
+		fprintf(stderr, "Invalid tab index (%d).\n", tab_index);
 		return;
 	}
 	// Get the URL.
@@ -41,12 +41,12 @@ void uri_entered_cb(GtkWidget* entry, gpointer data) {
 	// Append your code here
 	// ------------------------------------
 	// * Prepare a NEW_URI_ENTERED packet to send to ROUTER (parent) process.
-	req_type tab_msg = NEW_URI_ENTERED;
-	close(channel.child_to_parent_fd[0]);
-	write(channel.child_to_parent_fd[1], &tab_msg, sizeof(req_type));
 	// * Send the url and tab index to ROUTER
-	write(channel.child_to_parent_fd[1], uri, MSGSIZE);
-	write(channel.child_to_parent_fd[1], &tab_index, sizeof(int));
+	child_req_to_parent uriReq;
+	uriReq.type = NEW_URI_ENTERED;
+	uriReq.req.uri_req.render_in_tab = tab_index;
+	strncpy(uriReq.req.uri_req.uri, uri, sizeof(uriReq.req.uri_req.uri));
+	write(channel.child_to_parent_fd[1], &uriReq, sizeof(child_req_to_parent));
 	return;
 	// ------------------------------------
 }
@@ -73,7 +73,11 @@ void create_new_tab_cb(GtkButton *button, gpointer data) {
 	// Append your code here.
 	// ------------------------------------
 	// * Send a CREATE_TAB message to ROUTER (parent) process.
+	child_req_to_parent tabReq;
+	tabReq.type = CREATE_TAB;
+	write(channel.child_to_parent_fd[1], &tabReq, sizeof(child_req_to_parent));
 	// ------------------------------------
+	return;
 }
 
 /*
@@ -89,10 +93,16 @@ void create_new_tab_cb(GtkButton *button, gpointer data) {
 */
 int url_rendering_process(int tab_index, comm_channel *channel) {
 	// Don't forget to close pipe fds which are unused by this process
+	close(channel->child_to_parent_fd[0]);
+	close(channel->parent_to_child_fd[1]);
 	browser_window * b_window = NULL;
 	// Create url-rendering window
 	create_browser(URL_RENDERING_TAB, tab_index, G_CALLBACK(create_new_tab_cb), G_CALLBACK(uri_entered_cb), &b_window, channel);
-	child_req_to_parent req;
+	// child_req_to_parent req;
+	int flags, nread;
+	flags = fcntl(channel->parent_to_child_fd[0], F_GETFL, 0);
+	fcntl(channel->parent_to_child_fd[0], F_SETFL, flags | O_NONBLOCK);
+	child_req_to_parent tabRcv;
 	while (1) {
 		// Handle one gtk event, you don't need to change it nor understand what it does.
 		process_single_gtk_event();
@@ -100,6 +110,22 @@ int url_rendering_process(int tab_index, comm_channel *channel) {
 		// It is unnecessary to poll requests unstoppably, that will consume too much CPU time
 		// Sleep some time, e.g. 1 ms, and render CPU to other processes
 		usleep(1000);
+		nread = read(channel->parent_to_child_fd[0], &tabRcv, sizeof(child_req_to_parent));
+		if (nread != -1) {
+			switch (tabRcv.type) {
+				case CREATE_TAB:
+					fprintf(stderr, "Error: CREATE_TAB should not be received by normal tab\n");
+				break;
+				case NEW_URI_ENTERED:
+					//Annelies part
+
+				break;
+				case TAB_KILLED:
+					process_all_gtk_events();
+					return 0;
+				break;
+			}
+		}
 		// Append your code here
 		// Try to read data sent from ROUTER
 		// If no data being read, go back to the while loop
@@ -133,6 +159,38 @@ int controller_process(comm_channel *channel) {
 	return 0;
 }
 
+void kill_all_child(int tab_pid_array[MAX_TAB],comm_channel *channel[MAX_TAB]) {
+	fprintf(stderr, "Sending request to kill all tabs\n");
+	int i;
+	child_req_to_parent tempReq;
+	tempReq.type = TAB_KILLED;
+	for (i = 1; i < MAX_TAB; i++) {
+		if (tab_pid_array[i] != 0) {
+			tempReq.req.killed_req.tab_index = i;
+			write(channel[i]->parent_to_child_fd[1], &tempReq, sizeof(child_req_to_parent));
+			waitpid(tab_pid_array[i], NULL, 0);
+			free(channel[i]);
+			tab_pid_array[i] = 0;
+		}
+	}
+}
+
+int init_pipe(comm_channel **channel) {
+	int flags;
+	*channel = (comm_channel *) malloc(sizeof(comm_channel));
+	if (pipe((*channel)->child_to_parent_fd) == -1) {
+		perror("pipe error");
+		return -1;
+	}
+	flags = fcntl((*channel)->child_to_parent_fd[0], F_GETFL, 0);
+	fcntl((*channel)->child_to_parent_fd[0], F_SETFL, flags | O_NONBLOCK);
+	if (pipe((*channel)->parent_to_child_fd) == -1) {
+		perror("pipe error");
+		return -1;
+	}
+	return 0;
+}
+
 /*
  * Name:				router_process
  * Input arguments:	 none
@@ -142,8 +200,10 @@ int controller_process(comm_channel *channel) {
  *					  polling request messages from all ite child processes.
  *					  It does not need to call any gtk library function.
  */
+
 int router_process() {
 	comm_channel *channel[MAX_TAB];
+	int i;
 	int tab_pid_array[MAX_TAB] = {0}; // You can use this array to save the pid
 									  // of every child process that has been
 					  // created. When a chile process receives
@@ -154,53 +214,149 @@ int router_process() {
 					  // is for bookkeeping which tab index has been
 					  // taken.
 	// Append your code here
+	memset(tab_pid_array, 0, sizeof(tab_pid_array));
 	// Prepare communication pipes with the CONTROLLER process
-	channel[0] = (comm_channel *) malloc(sizeof(comm_channel));
-	if (pipe(channel[0]->child_to_parent_fd) == -1) {
-		perror("pipe error");
-		return -1;
-	}
-	int flags, nread;
-	flags = fcntl(channel[0]->child_to_parent_fd[0], F_GETFL, 0);
-	fcntl(channel[0]->child_to_parent_fd[0], F_SETFL, flags | O_NONBLOCK);
-
-	if (pipe(channel[0]->parent_to_child_fd) == -1) {
-		perror("pipe error");
+	int nread;
+	int init_res = init_pipe(&channel[0]);
+	if (init_res == -1) {
 		return -1;
 	}
 	// Fork the CONTROLLER process
 	int pid = fork();
 	if (pid == 0) { //child
-		controller_process(channel[0]);
+		// this is guard-processor for the controller.
+		int guard_pid = fork();
+		if (guard_pid == 0) { // sub-child
+			controller_process(channel[0]);
+			exit(0);
+		}
+		else if (guard_pid > 0){ //guard-processor
+			int status;
+			waitpid(guard_pid, &status, 0);
+			if (status != 0) { //unexpected quit
+				child_req_to_parent new_req;
+				new_req.type = TAB_KILLED;
+				new_req.req.killed_req.tab_index = 0;
+				fprintf(stderr, "Controller unexpected quit\n");
+				fprintf(stderr, "Guard-processor is sending killing msg as Controller\n");
+				write(channel[0]->child_to_parent_fd[1], &new_req, sizeof(new_req));
+			}
+		}
+		else {
+			perror("fork error in guard-processor");
+			return -1;
+		}
 		exit(0);
 	}
 	else if (pid > 0) { //parent
 		tab_pid_array[0] = pid;
+		close(channel[0]->child_to_parent_fd[1]);
+		close(channel[0]->parent_to_child_fd[0]);
 	}
+	else {
+		perror("fork error");
+		return -1;
+	}
+
+
 	//   call controller_process() in the forked CONTROLLER process
 	// Don't forget to close pipe fds which are unused by this process
 	// Poll child processes' communication channels using non-blocking pipes.
 	// Before any other URL-RENDERING process is created, CONTROLLER process
 	// is the only child process. When one or more URL-RENDERING processes
 	// are created, you would also need to poll their communication pipe.
-	while (true) {
-		req_type tab_msg;
-		close(channel[0]->child_to_parent_fd[1]);
-		nread = read(channel[0]->child_to_parent_fd[0], &tab_msg, sizeof(req_type));
-		if (nread == -1) {
-			fprintf(stderr, "No message income\n");
-			usleep(100);
-		}
-		else {
-			switch (tab_msg) {
-				case CREATE_TAB:
+	int id = 0;
+	child_req_to_parent req_from_child;
+	while (1) {
+		usleep(1000);
+		for (id = 0; id < MAX_TAB; id++) {
+			if (tab_pid_array[id] == 0) {
+				continue;
+			}
+			nread = read(channel[id]->child_to_parent_fd[0], &req_from_child, sizeof(child_req_to_parent));
+			if (nread == -1) {
+				// no message income
+			}
+			else {
+				// have message income
+				int tab_num;
+				switch (req_from_child.type) {
+					case CREATE_TAB:
+						if (id != 0) {
+							fprintf(stderr, "Error: CREATE_TAB must be sent by controller.\n");
+						}
+						else {
+							tab_num = -1;
+							for (i = 1; tab_num == -1 && i < MAX_TAB; i++) {
+								if (tab_pid_array[i] == 0) {
+									tab_num = i;
+								}
+							}
+							if (tab_num == -1) {
+								fprintf(stderr, "The number of tabs reaches the max limit.\n");
+								continue;
+							}
+							fprintf(stderr, "Create tab %d\n", tab_num);
 
-				break;
-				case NEW_URI_ENTERED:
+							init_res = init_pipe(&channel[tab_num]);
+							if (init_res == -1) {
+								return -1;
+							}
 
-				break;
-				case TAB_KILLED:
-				break;
+							pid = fork();
+							if (pid == 0) { //child
+								url_rendering_process(tab_num, channel[tab_num]);
+								exit(0);
+							}
+							else if (pid > 0) { //parent
+								tab_pid_array[tab_num] = pid;
+								close(channel[tab_num]->child_to_parent_fd[1]);
+								close(channel[tab_num]->parent_to_child_fd[0]);
+							}
+							else {
+								perror("fork error");
+								return -1;
+							}
+						}
+					break;
+
+					case NEW_URI_ENTERED:
+						if (id != 0) {
+							fprintf(stderr, "Error: NEW_URI_ENTERED must be sent by controller.\n");
+						}
+						else {
+							fprintf(stderr,
+									"Received NEW_URI_ENTERED for tab %d from controller\n",
+									req_from_child.req.uri_req.render_in_tab);
+							//Annelies part
+							//req_from_child is the request from the child processor
+
+						}
+					break;
+
+					case TAB_KILLED:
+						fprintf(stderr, "Killing msg received from tab %d\n", id);
+						if (req_from_child.req.killed_req.tab_index != 0) {
+							int temp_id = req_from_child.req.killed_req.tab_index;
+							if (tab_pid_array[temp_id] != 0) {
+								write(channel[temp_id]->parent_to_child_fd[1],
+									  &req_from_child,
+									  sizeof(child_req_to_parent)); //send back the packet to kill the processor.
+								waitpid(tab_pid_array[temp_id], NULL, 0);
+								free(channel[temp_id]);
+								tab_pid_array[temp_id] = 0;
+							}
+						}
+						else {
+							waitpid(tab_pid_array[0], NULL, 0);
+							free(channel[0]);
+							tab_pid_array[0] = 0;
+							kill_all_child(tab_pid_array, channel);
+							fprintf(stderr, "Exit successfully.\n");
+							return 0;
+						}
+					break;
+				}
 			}
 		}
 	}

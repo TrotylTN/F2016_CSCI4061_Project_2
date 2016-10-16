@@ -58,8 +58,8 @@ void create_add_remove_tab_button(char* label, void (*g_callback)(void), void* c
 void create_labeled_tab(void* cb_data) {
 	GtkWidget* scrolled_window = gtk_scrolled_window_new (NULL, NULL);
 	gtk_widget_set_size_request (scrolled_window, WINDOW_WIDTH, WINDOW_HEIGHT);
-	gtk_scrolled_window_set_policy (GTK_SCROLLED_WINDOW (scrolled_window), 
-	GTK_POLICY_AUTOMATIC, 
+	gtk_scrolled_window_set_policy (GTK_SCROLLED_WINDOW (scrolled_window),
+	GTK_POLICY_AUTOMATIC,
 	GTK_POLICY_AUTOMATIC);
 	gtk_widget_show(scrolled_window);
 
@@ -82,8 +82,8 @@ void create_labeled_tab(void* cb_data) {
 
 // display popup alert box
 void alert(gchar* msg) {
-  
-	GtkWidget* dialog = gtk_dialog_new_with_buttons("Message", 
+
+	GtkWidget* dialog = gtk_dialog_new_with_buttons("Message",
 		NULL,
 		GTK_DIALOG_MODAL,
 		GTK_STOCK_OK,
@@ -110,10 +110,10 @@ void delete_window_cb(GtkWidget *window, gpointer data) {
 	gtk_main_quit();
 }
 
-int create_browser(tab_type t_type, 
+int create_browser(tab_type t_type,
 			 int tab_index,
-			 void (*create_new_tab_cb)(void), 
-			 void (*uri_entered_cb)(void), 
+			 void (*create_new_tab_cb)(void),
+			 void (*uri_entered_cb)(void),
 			 browser_window **b_window,
 			 comm_channel *channel) {
 	GtkWidget *window;
@@ -129,7 +129,7 @@ int create_browser(tab_type t_type,
 
 	if(t_type == CONTROLLER_TAB)
 		table = gtk_table_new(2,4,FALSE);
-	else 
+	else
 		table = gtk_table_new(2,1,FALSE);
 
 	gtk_container_add (GTK_CONTAINER (window), table);
@@ -142,8 +142,8 @@ int create_browser(tab_type t_type,
 	(*b_window)->notebook = gtk_notebook_new ();
 	(*b_window)->tab_index = tab_index;
 	sprintf((*b_window)->tab_label, "Tab %d", tab_index);
-	memcpy((*b_window)->channel.parent_to_child_fd, 
-		channel->parent_to_child_fd, 
+	memcpy((*b_window)->channel.parent_to_child_fd,
+		channel->parent_to_child_fd,
 		2*sizeof(int));
 	memcpy((*b_window)->channel.child_to_parent_fd,
 			channel->child_to_parent_fd,
@@ -153,17 +153,17 @@ int create_browser(tab_type t_type,
 	gtk_notebook_set_tab_pos (GTK_NOTEBOOK ((*b_window)->notebook), GTK_POS_TOP);
 	gtk_table_attach_defaults (GTK_TABLE (table), (*b_window)->notebook, 0, 6, 1, 2);
 	gtk_widget_show ((*b_window)->notebook);
- 
-	if(t_type == CONTROLLER_TAB) 
+
+	if(t_type == CONTROLLER_TAB)
 	{
 		gtk_window_set_title(GTK_WINDOW(window), "CONTROLLER-TAB");
-		
+
 		GtkWidget* url_label = gtk_label_new("URL");
 		gtk_table_attach_defaults(GTK_TABLE(table), url_label, 0,1,0,1);
 		gtk_widget_show(url_label);
 
 		GtkWidget* uri_entry = gtk_entry_new();
-		gtk_table_attach_defaults(GTK_TABLE(table), uri_entry, 1, 2, 0, 1); 
+		gtk_table_attach_defaults(GTK_TABLE(table), uri_entry, 1, 2, 0, 1);
 		gtk_widget_show(uri_entry);
 		g_signal_connect (G_OBJECT (uri_entry), "activate", uri_entered_cb, *b_window);
 		(*b_window)->uri_entry = uri_entry;
@@ -171,7 +171,7 @@ int create_browser(tab_type t_type,
 		GtkWidget* tab_label = gtk_label_new("Tab Number");
 		gtk_table_attach_defaults(GTK_TABLE(table), tab_label, 2,3,0,1);
 		gtk_widget_show(tab_label);
-	
+
 		GtkWidget* tab_selector = gtk_entry_new();
 		gtk_table_attach_defaults(GTK_TABLE(table), tab_selector, 3, 4, 0, 1);
 		gtk_widget_show(tab_selector);
@@ -190,7 +190,7 @@ int create_browser(tab_type t_type,
 
 	if(t_type == CONTROLLER_TAB)
 	{
-		// Create "+" and "-" buttons (for adding and deleting new tabs) 
+		// Create "+" and "-" buttons (for adding and deleting new tabs)
 		// in CONTROLLER tab
 		create_add_remove_tab_button("+", G_CALLBACK(create_new_tab_cb), *b_window);
 		//create_add_remove_tab_button("-", G_CALLBACK(delete_tab_clicked_cb), *b_window);
@@ -203,7 +203,7 @@ int create_browser(tab_type t_type,
 
 	(*b_window)->type = t_type;
 
-	g_signal_connect(G_OBJECT (window), "destroy", 
+	g_signal_connect(G_OBJECT (window), "destroy",
 			 G_CALLBACK(delete_window_cb), *b_window);
 	gtk_widget_show(table);
 	gtk_widget_show_all(window);
