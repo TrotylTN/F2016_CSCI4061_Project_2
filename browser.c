@@ -126,12 +126,15 @@ int url_rendering_process(int tab_index, comm_channel *channel, int parent_pid) 
 					render_web_page_in_tab(tabRcv.req.uri_req.uri, b_window);
 				break;
 				case TAB_KILLED:
+                    fprintf(stderr, "Tab %d: Received TAB_KILLED. Quit.\n", tab_index);
 					process_all_gtk_events();
+                    free(channel);
 					return 0;
 				break;
 			}
 		}
 	}
+    free(channel);
 	return 0;
 }
 /*
@@ -346,6 +349,7 @@ int router_process() {
 						}
 						else {
 							waitpid(tab_pid_array[0], NULL, 0);
+                            free(channel[0]);
 							tab_pid_array[0] = 0;
 							kill_all_child(tab_pid_array, channel);
 							fprintf(stderr, "Router: Exit successfully.\n");
