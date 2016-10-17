@@ -117,8 +117,7 @@ int url_rendering_process(int tab_index, comm_channel *channel) {
 					fprintf(stderr, "Error: CREATE_TAB should not be received by normal tab\n");
 				break;
 				case NEW_URI_ENTERED:
-					//Annelies part
-
+					render_web_page_in_tab(tabRcv.req.uri_req.uri, b_window);
 				break;
 				case TAB_KILLED:
 					process_all_gtk_events();
@@ -126,17 +125,9 @@ int url_rendering_process(int tab_index, comm_channel *channel) {
 				break;
 			}
 		}
-		// Append your code here
-		// Try to read data sent from ROUTER
-		// If no data being read, go back to the while loop
-		// Otherwise, check message type:
-		//   * NEW_URI_ENTERED
-		//	 ** call render_web_page_in_tab(req.req.uri_req.uri, b_window);
-		//   * TAB_KILLED
-		//	 ** call process_all_gtk_events() to process all gtk events and jump out of the loop
-		//   * CREATE_TAB or unknown message type
-		//	 ** print an error message and ignore it
-		// Handle read error, e.g. what if the ROUTER has quit unexpected?
+		else {
+			// Handle read error, e.g. what if the ROUTER has quit unexpected?
+		}
 	}
 	return 0;
 }
@@ -325,12 +316,13 @@ int router_process() {
 							fprintf(stderr, "Error: NEW_URI_ENTERED must be sent by controller.\n");
 						}
 						else {
-							fprintf(stderr,
-									"Received NEW_URI_ENTERED for tab %d from controller\n",
-									req_from_child.req.uri_req.render_in_tab);
-							//Annelies part
-							//req_from_child is the request from the child processor
-
+							int tab_id = req_from_child.req.uri_req.render_in_tab;
+							if (tab_pid_array[tab_id] != 0) {
+								write(channel[tab_id]->parent_to_child_fd[1], &req_from_child, sizeof(child_req_to_parent));
+							}
+							else {
+								fprintf(stderr, "Error: url entered for non-existent tab\n");
+							}
 						}
 					break;
 

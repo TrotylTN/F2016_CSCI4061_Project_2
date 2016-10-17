@@ -4,6 +4,9 @@
 *.obj
 *.elf
 
+# Swap files
+*.swp
+
 # Precompiled Headers
 *.gch
 *.pch
