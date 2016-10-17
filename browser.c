@@ -123,6 +123,7 @@ int url_rendering_process(int tab_index, comm_channel *channel, int parent_pid) 
 					fprintf(stderr, "Tab %d Error: CREATE_TAB should not be received by normal tab\n", tab_index);
 				break;
 				case NEW_URI_ENTERED:
+                    fprintf(stderr, "Tab %d: Loading webpage\n", tab_index);
 					render_web_page_in_tab(tabRcv.req.uri_req.uri, b_window);
 				break;
 				case TAB_KILLED:
@@ -239,6 +240,7 @@ int router_process() {
 				fprintf(stderr, "Guard for Controller: Controller unexpected quit\n");
 				fprintf(stderr, "Guard for Controller: Sending killing all request as Controller\n");
 				write(channel[0]->child_to_parent_fd[1], &new_req, sizeof(new_req));
+                free(channel[0]);
 			}
 		}
 		else {
