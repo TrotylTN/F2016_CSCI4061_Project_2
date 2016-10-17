@@ -104,12 +104,12 @@ int url_rendering_process(int tab_index, comm_channel *channel, int parent_pid) 
 	fcntl(channel->parent_to_child_fd[0], F_SETFL, flags | O_NONBLOCK);
 	child_req_to_parent tabRcv;
 	while (1) {
-        if (kill(parent_pid, 0) != 0) {
-            printf("Tab %d Error: Detected Router process's unexpected exit. Quit.\n", tab_index);
-            process_all_gtk_events();
-            free(channel);
-            return 0;
-        }
+		if (kill(parent_pid, 0) != 0) {
+			printf("Tab %d Error: Detected Router process's unexpected exit. Quit.\n", tab_index);
+			process_all_gtk_events();
+			free(channel);
+			return 0;
+		}
 		// Handle one gtk event, you don't need to change it nor understand what it does.
 		process_single_gtk_event();
 		// Poll message from ROUTER
@@ -123,19 +123,19 @@ int url_rendering_process(int tab_index, comm_channel *channel, int parent_pid) 
 					fprintf(stderr, "Tab %d Error: CREATE_TAB should not be received by normal tab\n", tab_index);
 				break;
 				case NEW_URI_ENTERED:
-                    fprintf(stderr, "Tab %d: Loading webpage\n", tab_index);
+					fprintf(stderr, "Tab %d: Loading webpage\n", tab_index);
 					render_web_page_in_tab(tabRcv.req.uri_req.uri, b_window);
 				break;
 				case TAB_KILLED:
-                    fprintf(stderr, "Tab %d: Received TAB_KILLED. Quit.\n", tab_index);
+					fprintf(stderr, "Tab %d: Received TAB_KILLED. Quit.\n", tab_index);
 					process_all_gtk_events();
-                    free(channel);
+					free(channel);
 					return 0;
 				break;
 			}
 		}
 	}
-    free(channel);
+	free(channel);
 	return 0;
 }
 /*
@@ -154,7 +154,7 @@ int controller_process(comm_channel *channel) {
 	// Create controler window
 	create_browser(CONTROLLER_TAB, 0, G_CALLBACK(create_new_tab_cb), G_CALLBACK(uri_entered_cb), &b_window, channel);
 	show_browser();
-    free(channel);
+	free(channel);
 	return 0;
 }
 
@@ -201,7 +201,7 @@ int init_pipe(comm_channel **channel) {
  */
 
 int router_process() {
-    int parent_pid = getpid();
+	int parent_pid = getpid();
 	comm_channel *channel[MAX_TAB];
 	int i;
 	int tab_pid_array[MAX_TAB] = {0}; // You can use this array to save the pid
@@ -234,28 +234,28 @@ int router_process() {
 			perror("fork error in guard-processor");
 			return -1;
 		}
-        //here is the guard-processor
-        int status;
-        waitpid(guard_pid, &status, 0);
-        if (status != 0) { //unexpected quit
-            child_req_to_parent new_req;
-            new_req.type = TAB_KILLED;
-            new_req.req.killed_req.tab_index = 0;
-            fprintf(stderr, "Guard for Controller: Controller unexpected quit\n");
-            fprintf(stderr, "Guard for Controller: Sending 'KILL ALL' request to Router as Controller\n");
-            write(channel[0]->child_to_parent_fd[1], &new_req, sizeof(new_req));
-            free(channel[0]);
-        }
+		//here is the guard-processor
+		int status;
+		waitpid(guard_pid, &status, 0);
+		if (status != 0) { //unexpected quit
+			child_req_to_parent new_req;
+			new_req.type = TAB_KILLED;
+			new_req.req.killed_req.tab_index = 0;
+			fprintf(stderr, "Guard for Controller: Controller unexpected quit\n");
+			fprintf(stderr, "Guard for Controller: Sending 'KILL ALL' request to Router as Controller\n");
+			write(channel[0]->child_to_parent_fd[1], &new_req, sizeof(new_req));
+			free(channel[0]);
+		}
 		exit(0);
 	}
 	else if (pid < 0) { //parent
 		perror("fork error");
 		return -1;
 	}
-    // Here is parent.
-    tab_pid_array[0] = pid;
-    close(channel[0]->child_to_parent_fd[1]);
-    close(channel[0]->parent_to_child_fd[0]);
+	// Here is parent.
+	tab_pid_array[0] = pid;
+	close(channel[0]->child_to_parent_fd[1]);
+	close(channel[0]->parent_to_child_fd[0]);
 	int id = 0;
 	child_req_to_parent req_from_child;
 	while (1) {
@@ -341,7 +341,7 @@ int router_process() {
 						}
 						else {
 							waitpid(tab_pid_array[0], NULL, 0);
-                            free(channel[0]);
+							free(channel[0]);
 							tab_pid_array[0] = 0;
 							kill_all_child(tab_pid_array, channel);
 							fprintf(stderr, "Router: Exit successfully.\n");
