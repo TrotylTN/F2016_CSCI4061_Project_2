@@ -1,3 +1,8 @@
+/* CSci4061 F2016 Assignment 2
+ * login: zhou0745
+ * date: 10/28/16
+ * name: Tiannan Zhou, Annelies Odermann, Lidiya Dergacheva
+ * id: 5232494(zhou0745), 4740784(oderm008), 4515805 (derg0004) */
 #include "wrapper.h"
 #include <sys/types.h>
 #include <unistd.h>
@@ -155,6 +160,7 @@ int controller_process(comm_channel *channel) {
 	create_browser(CONTROLLER_TAB, 0, G_CALLBACK(create_new_tab_cb), G_CALLBACK(uri_entered_cb), &b_window, channel);
 	show_browser();
 	free(channel);
+	fprintf(stderr, "Controller: Quit.\n");
 	return 0;
 }
 
