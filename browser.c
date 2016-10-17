@@ -125,17 +125,9 @@ int url_rendering_process(int tab_index, comm_channel *channel) {
 				break;
 			}
 		}
-		// Append your code here
-		// Try to read data sent from ROUTER
-		// If no data being read, go back to the while loop
-		// Otherwise, check message type:
-		//   * NEW_URI_ENTERED
-		//	 ** call render_web_page_in_tab(req.req.uri_req.uri, b_window);
-		//   * TAB_KILLED
-		//	 ** call process_all_gtk_events() to process all gtk events and jump out of the loop
-		//   * CREATE_TAB or unknown message type
-		//	 ** print an error message and ignore it
-		// Handle read error, e.g. what if the ROUTER has quit unexpected?
+		else {
+			// Handle read error, e.g. what if the ROUTER has quit unexpected?
+		}
 	}
 	return 0;
 }
