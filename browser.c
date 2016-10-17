@@ -154,6 +154,7 @@ int controller_process(comm_channel *channel) {
 	// Create controler window
 	create_browser(CONTROLLER_TAB, 0, G_CALLBACK(create_new_tab_cb), G_CALLBACK(uri_entered_cb), &b_window, channel);
 	show_browser();
+    fprintf(stderr, "I am here after show_browser()\n");
     free(channel);
 	return 0;
 }
@@ -230,42 +231,32 @@ int router_process() {
 			controller_process(channel[0]);
 			exit(0);
 		}
-		else if (guard_pid > 0){ //guard-processor
-			int status;
-			waitpid(guard_pid, &status, 0);
-			if (status != 0) { //unexpected quit
-				child_req_to_parent new_req;
-				new_req.type = TAB_KILLED;
-				new_req.req.killed_req.tab_index = 0;
-				fprintf(stderr, "Guard for Controller: Controller unexpected quit\n");
-				fprintf(stderr, "Guard for Controller: Sending killing all request as Controller\n");
-				write(channel[0]->child_to_parent_fd[1], &new_req, sizeof(new_req));
-                free(channel[0]);
-			}
-		}
-		else {
+		else if (guard_pid < 0){
 			perror("fork error in guard-processor");
 			return -1;
 		}
+        //here is the guard-processor
+        int status;
+        waitpid(guard_pid, &status, 0);
+        if (status != 0) { //unexpected quit
+            child_req_to_parent new_req;
+            new_req.type = TAB_KILLED;
+            new_req.req.killed_req.tab_index = 0;
+            fprintf(stderr, "Guard for Controller: Controller unexpected quit\n");
+            fprintf(stderr, "Guard for Controller: Sending 'KILL ALL' request to Router as Controller\n");
+            write(channel[0]->child_to_parent_fd[1], &new_req, sizeof(new_req));
+            free(channel[0]);
+        }
 		exit(0);
 	}
-	else if (pid > 0) { //parent
-		tab_pid_array[0] = pid;
-		close(channel[0]->child_to_parent_fd[1]);
-		close(channel[0]->parent_to_child_fd[0]);
-	}
-	else {
+	else if (pid < 0) { //parent
 		perror("fork error");
 		return -1;
 	}
-
-
-	//   call controller_process() in the forked CONTROLLER process
-	// Don't forget to close pipe fds which are unused by this process
-	// Poll child processes' communication channels using non-blocking pipes.
-	// Before any other URL-RENDERING process is created, CONTROLLER process
-	// is the only child process. When one or more URL-RENDERING processes
-	// are created, you would also need to poll their communication pipe.
+    // Here is parent.
+    tab_pid_array[0] = pid;
+    close(channel[0]->child_to_parent_fd[1]);
+    close(channel[0]->parent_to_child_fd[0]);
 	int id = 0;
 	child_req_to_parent req_from_child;
 	while (1) {
@@ -362,31 +353,6 @@ int router_process() {
 			}
 		}
 	}
-	//   * sleep some time if no message received
-	//   * if message received, handle it:
-	//	 ** CREATE_TAB:
-	//
-	//		Prepare communication pipes with the new URL-RENDERING process
-	//		Fork the new URL-RENDERING process
-	//
-	//	 ** NEW_URI_ENTERED:
-	//
-	//		Send TAB_KILLED message to the URL-RENDERING process in which
-	//		the new url is going to be rendered
-	//
-	//	 ** TAB_KILLED:
-	//
-	//		If the killed process is the CONTROLLER process
-	//		*** send TAB_KILLED messages to kill all the URL-RENDERING processes
-	//		*** call waitpid on every child URL-RENDERING processes
-	//		*** self exit
-	//
-	//		If the killed process is a URL-RENDERING process
-	//		*** send TAB_KILLED to the URL-RENDERING
-	//		*** call waitpid on every child URL-RENDERING processes
-	//		*** close pipes for that specific process
-	//		*** remove its pid from tab_pid_array[]
-	//
 	return 0;
 }
 
