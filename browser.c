@@ -154,7 +154,6 @@ int controller_process(comm_channel *channel) {
 	// Create controler window
 	create_browser(CONTROLLER_TAB, 0, G_CALLBACK(create_new_tab_cb), G_CALLBACK(uri_entered_cb), &b_window, channel);
 	show_browser();
-    fprintf(stderr, "I am here after show_browser()\n");
     free(channel);
 	return 0;
 }
