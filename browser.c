@@ -91,7 +91,7 @@ void create_new_tab_cb(GtkButton *button, gpointer data) {
  *					  1. process_all_gtk_events();
  *					  2. process_single_gtk_event();
 */
-int url_rendering_process(int tab_index, comm_channel *channel) {
+int url_rendering_process(int tab_index, comm_channel *channel, int parent_pid) {
 	// Don't forget to close pipe fds which are unused by this process
 	close(channel->child_to_parent_fd[0]);
 	close(channel->parent_to_child_fd[1]);
@@ -104,6 +104,12 @@ int url_rendering_process(int tab_index, comm_channel *channel) {
 	fcntl(channel->parent_to_child_fd[0], F_SETFL, flags | O_NONBLOCK);
 	child_req_to_parent tabRcv;
 	while (1) {
+        if (kill(parent_pid, 0) != 0) {
+            printf("Tab %d Error: Detected Router process's unexpected exit. Quit.\n", tab_index);
+            process_all_gtk_events();
+            free(channel);
+            return 0;
+        }
 		// Handle one gtk event, you don't need to change it nor understand what it does.
 		process_single_gtk_event();
 		// Poll message from ROUTER
@@ -114,7 +120,7 @@ int url_rendering_process(int tab_index, comm_channel *channel) {
 		if (nread != -1) {
 			switch (tabRcv.type) {
 				case CREATE_TAB:
-					fprintf(stderr, "Error: CREATE_TAB should not be received by normal tab\n");
+					fprintf(stderr, "Tab %d Error: CREATE_TAB should not be received by normal tab\n", tab_index);
 				break;
 				case NEW_URI_ENTERED:
 					render_web_page_in_tab(tabRcv.req.uri_req.uri, b_window);
@@ -124,9 +130,6 @@ int url_rendering_process(int tab_index, comm_channel *channel) {
 					return 0;
 				break;
 			}
-		}
-		else {
-			// Handle read error, e.g. what if the ROUTER has quit unexpected?
 		}
 	}
 	return 0;
@@ -147,11 +150,12 @@ int controller_process(comm_channel *channel) {
 	// Create controler window
 	create_browser(CONTROLLER_TAB, 0, G_CALLBACK(create_new_tab_cb), G_CALLBACK(uri_entered_cb), &b_window, channel);
 	show_browser();
+    free(channel);
 	return 0;
 }
 
 void kill_all_child(int tab_pid_array[MAX_TAB],comm_channel *channel[MAX_TAB]) {
-	fprintf(stderr, "Sending request to kill all tabs\n");
+	fprintf(stderr, "Router: Sending request to kill all tabs\n");
 	int i;
 	child_req_to_parent tempReq;
 	tempReq.type = TAB_KILLED;
@@ -193,6 +197,7 @@ int init_pipe(comm_channel **channel) {
  */
 
 int router_process() {
+    int parent_pid = getpid();
 	comm_channel *channel[MAX_TAB];
 	int i;
 	int tab_pid_array[MAX_TAB] = {0}; // You can use this array to save the pid
@@ -228,8 +233,8 @@ int router_process() {
 				child_req_to_parent new_req;
 				new_req.type = TAB_KILLED;
 				new_req.req.killed_req.tab_index = 0;
-				fprintf(stderr, "Controller unexpected quit\n");
-				fprintf(stderr, "Guard-processor is sending killing msg as Controller\n");
+				fprintf(stderr, "Guard for Controller: Controller unexpected quit\n");
+				fprintf(stderr, "Guard for Controller: Sending killing all request as Controller\n");
 				write(channel[0]->child_to_parent_fd[1], &new_req, sizeof(new_req));
 			}
 		}
@@ -274,7 +279,7 @@ int router_process() {
 				switch (req_from_child.type) {
 					case CREATE_TAB:
 						if (id != 0) {
-							fprintf(stderr, "Error: CREATE_TAB must be sent by controller.\n");
+							fprintf(stderr, "Router Error: CREATE_TAB must be sent by controller.\n");
 						}
 						else {
 							tab_num = -1;
@@ -284,10 +289,10 @@ int router_process() {
 								}
 							}
 							if (tab_num == -1) {
-								fprintf(stderr, "The number of tabs reaches the max limit.\n");
+								fprintf(stderr, "Router Error: The number of tabs reaches the max limit.\n");
 								continue;
 							}
-							fprintf(stderr, "Create tab %d\n", tab_num);
+							fprintf(stderr, "Router: Create tab %d\n", tab_num);
 
 							init_res = init_pipe(&channel[tab_num]);
 							if (init_res == -1) {
@@ -296,7 +301,7 @@ int router_process() {
 
 							pid = fork();
 							if (pid == 0) { //child
-								url_rendering_process(tab_num, channel[tab_num]);
+								url_rendering_process(tab_num, channel[tab_num], parent_pid);
 								exit(0);
 							}
 							else if (pid > 0) { //parent
@@ -313,7 +318,7 @@ int router_process() {
 
 					case NEW_URI_ENTERED:
 						if (id != 0) {
-							fprintf(stderr, "Error: NEW_URI_ENTERED must be sent by controller.\n");
+							fprintf(stderr, "Router Error: NEW_URI_ENTERED must be sent by controller.\n");
 						}
 						else {
 							int tab_id = req_from_child.req.uri_req.render_in_tab;
@@ -321,13 +326,13 @@ int router_process() {
 								write(channel[tab_id]->parent_to_child_fd[1], &req_from_child, sizeof(child_req_to_parent));
 							}
 							else {
-								fprintf(stderr, "Error: url entered for non-existent tab\n");
+								fprintf(stderr, "Router Error: url entered for non-existent Tab (%d)\n", tab_id);
 							}
 						}
 					break;
 
 					case TAB_KILLED:
-						fprintf(stderr, "Killing msg received from tab %d\n", id);
+						fprintf(stderr, "Router: Killing msg received from tab %d\n", id);
 						if (req_from_child.req.killed_req.tab_index != 0) {
 							int temp_id = req_from_child.req.killed_req.tab_index;
 							if (tab_pid_array[temp_id] != 0) {
@@ -341,10 +346,9 @@ int router_process() {
 						}
 						else {
 							waitpid(tab_pid_array[0], NULL, 0);
-							free(channel[0]);
 							tab_pid_array[0] = 0;
 							kill_all_child(tab_pid_array, channel);
-							fprintf(stderr, "Exit successfully.\n");
+							fprintf(stderr, "Router: Exit successfully.\n");
 							return 0;
 						}
 					break;
