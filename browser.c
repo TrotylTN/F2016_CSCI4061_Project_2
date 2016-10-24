@@ -152,6 +152,7 @@ int url_rendering_process(int tab_index, comm_channel *channel, int parent_pid) 
  *					  be blocked until the program terminates.
  */
 int controller_process(comm_channel *channel) {
+	fprintf(stderr, "Current controler's pid is: %d\n", getpid());
 	// Do not need to change code in this function
 	close(channel->child_to_parent_fd[0]);
 	close(channel->parent_to_child_fd[1]);
@@ -207,6 +208,7 @@ int init_pipe(comm_channel **channel) {
  */
 
 int router_process() {
+	fprintf(stderr, "Main process's pid is: %d\n", getpid());
 	int parent_pid = getpid();
 	comm_channel *channel[MAX_TAB];
 	int i;
@@ -247,7 +249,8 @@ int router_process() {
 			int status;
 			waitpid(guard_pid, &status, 0);
 			if (status != 0) { //unexpected quit
-				fprintf(stderr, "Guard for Controller: Controller unexpected quit. Restarting.\n");
+				fprintf(stderr, "Guard for Controller: Controller met unexpected quit.\n");
+				fprintf(stderr, "Controller: Restarting...\n");
 				restart_flag = 1;
 			}
 		}
