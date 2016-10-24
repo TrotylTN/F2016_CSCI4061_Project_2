@@ -152,6 +152,7 @@ int url_rendering_process(int tab_index, comm_channel *channel, int parent_pid) 
  *					  be blocked until the program terminates.
  */
 int controller_process(comm_channel *channel) {
+	fprintf(stderr, "Current controler's pid is: %d\n", getpid());
 	// Do not need to change code in this function
 	close(channel->child_to_parent_fd[0]);
 	close(channel->parent_to_child_fd[1]);
@@ -207,6 +208,7 @@ int init_pipe(comm_channel **channel) {
  */
 
 int router_process() {
+	fprintf(stderr, "Main process's pid is: %d\n", getpid());
 	int parent_pid = getpid();
 	comm_channel *channel[MAX_TAB];
 	int i;
@@ -231,27 +233,28 @@ int router_process() {
 	int pid = fork();
 	if (pid == 0) { //child
 		// this is guard-processor for the controller.
-		int guard_pid = fork();
-		if (guard_pid == 0) { // sub-child
-			controller_process(channel[0]);
-			exit(0);
+		int restart_flag = 1;
+		while (restart_flag) {
+			restart_flag = 0;
+			int guard_pid = fork();
+			if (guard_pid == 0) { // sub-child
+				controller_process(channel[0]);
+				exit(0);
+			}
+			else if (guard_pid < 0) {
+				perror("fork error in guard-processor");
+				return -1;
+			}
+			//here is the guard-processor
+			int status;
+			waitpid(guard_pid, &status, 0);
+			if (status != 0) { //unexpected quit
+				fprintf(stderr, "Guard for Controller: Controller met unexpected quit.\n");
+				fprintf(stderr, "Controller: Restarting...\n");
+				restart_flag = 1;
+			}
 		}
-		else if (guard_pid < 0){
-			perror("fork error in guard-processor");
-			return -1;
-		}
-		//here is the guard-processor
-		int status;
-		waitpid(guard_pid, &status, 0);
-		if (status != 0) { //unexpected quit
-			child_req_to_parent new_req;
-			new_req.type = TAB_KILLED;
-			new_req.req.killed_req.tab_index = 0;
-			fprintf(stderr, "Guard for Controller: Controller unexpected quit\n");
-			fprintf(stderr, "Guard for Controller: Sending 'KILL ALL' request to Router as Controller\n");
-			write(channel[0]->child_to_parent_fd[1], &new_req, sizeof(new_req));
-			free(channel[0]);
-		}
+		free(channel[0]);
 		exit(0);
 	}
 	else if (pid < 0) { //parent
