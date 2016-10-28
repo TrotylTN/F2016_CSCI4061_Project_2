@@ -163,7 +163,13 @@ int controller_process(comm_channel *channel) {
 	fprintf(stderr, "Controller: Quit.\n");
 	return 0;
 }
-
+/*
+ * Name:			kill_all_child
+ * Input arguments:	 'channel': Includes communctaion pipes
+ *					 'tab_pid_array': Includes all tabs' number
+ * Output arguments:	none
+ * Function:			This function will kill all the tabs remained
+ */
 void kill_all_child(int tab_pid_array[MAX_TAB],comm_channel *channel[MAX_TAB]) {
 	fprintf(stderr, "Router: Sending request to kill all tabs\n");
 	int i;
