@@ -20,7 +20,7 @@ You just need to use GNU makefile to compile this project.
 * Annelies Odermann
 	* Completed NEW_URI_ENTERED part.
 * Lidiya Dergacheva
-	* TBD.
+	* None
 
 **Usage**
 * Start
