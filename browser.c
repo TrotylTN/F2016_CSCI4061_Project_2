@@ -349,32 +349,50 @@ int router_process() {
 								write(channel[tab_id]->parent_to_child_fd[1], &req_from_child, sizeof(child_req_to_parent));
 							}
 							else {
-								fprintf(stderr, "Router Error: url entered for non-existent Tab (%d)\n", tab_id);
+								fprintf(stderr, "Router Error: url entered for non-existent Tab [%d]\n", tab_id);
 							}
 						}
 					break;
 
 					case TAB_KILLED:
-						fprintf(stderr, "Router: Killing msg received from tab %d\n", id);
-						if (req_from_child.req.killed_req.tab_index != 0) {
-							int temp_id = req_from_child.req.killed_req.tab_index;
-							if (tab_pid_array[temp_id] != 0) {
-								write(channel[temp_id]->parent_to_child_fd[1],
-									  &req_from_child,
-									  sizeof(child_req_to_parent)); //send back the packet to kill the processor.
-								waitpid(tab_pid_array[temp_id], NULL, 0);
-								free(channel[temp_id]);
-								tab_pid_array[temp_id] = 0;
-							}
+						if (req_from_child.req.killed_req.tab_index != id) {
+							fprintf(stderr, "Router Error: TAB_KILLED with wrong tab number [%d] received from Tab [%d].\n",
+									req_from_child.req.killed_req.tab_index, id);
+							waitpid(tab_pid_array[id], NULL, 0);
+							printf("Router: Detected Tab [%d]'s unexpected exit. Removed.\n", id);
+							tab_pid_array[id] = 0;
+							free(channel[id]);
 						}
 						else {
-							waitpid(tab_pid_array[0], NULL, 0);
-							free(channel[0]);
-							tab_pid_array[0] = 0;
-							kill_all_child(tab_pid_array, channel);
-							fprintf(stderr, "Router: Exit successfully.\n");
-							return 0;
+							fprintf(stderr, "Router: TAB_KILLED received from tab [%d]\n", id);
+							if (req_from_child.req.killed_req.tab_index != 0) {
+								int temp_id = req_from_child.req.killed_req.tab_index;
+								if (tab_pid_array[temp_id] != 0) {
+									write(channel[temp_id]->parent_to_child_fd[1],
+										  &req_from_child,
+										  sizeof(child_req_to_parent)); //send back the packet to kill the processor.
+									waitpid(tab_pid_array[temp_id], NULL, 0);
+									free(channel[temp_id]);
+									tab_pid_array[temp_id] = 0;
+								}
+							}
+							else {
+								waitpid(tab_pid_array[0], NULL, 0);
+								free(channel[0]);
+								tab_pid_array[0] = 0;
+								kill_all_child(tab_pid_array, channel);
+								fprintf(stderr, "Router: Exit successfully.\n");
+								return 0;
+							}
 						}
+					break;
+
+					default:
+						fprintf(stderr, "Router Error: Unknown message received from Tab [%d].\n", id);
+						waitpid(tab_pid_array[id], NULL, 0);
+						printf("Router: Detected Tab [%d]'s unexpected exit. Removed.\n", id);
+						tab_pid_array[id] = 0;
+						free(channel[id]);
 					break;
 				}
 			}
