@@ -100,6 +100,7 @@ int url_rendering_process(int tab_index, comm_channel *channel, int parent_pid) 
 	// Don't forget to close pipe fds which are unused by this process
 	close(channel->child_to_parent_fd[0]);
 	close(channel->parent_to_child_fd[1]);
+	fprintf(stderr, "Tab %d: This tab's pid is: %d\n", tab_index, getpid());
 	browser_window * b_window = NULL;
 	// Create url-rendering window
 	create_browser(URL_RENDERING_TAB, tab_index, G_CALLBACK(create_new_tab_cb), G_CALLBACK(uri_entered_cb), &b_window, channel);
@@ -126,9 +127,13 @@ int url_rendering_process(int tab_index, comm_channel *channel, int parent_pid) 
 			switch (tabRcv.type) {
 				case CREATE_TAB:
 					fprintf(stderr, "Tab %d Error: CREATE_TAB should not be received by normal tab\n", tab_index);
+					printf("Tab %d Error: Detected Router process's unexpected exit. Quit.\n", tab_index);
+					process_all_gtk_events();
+					free(channel);
+					return 0;
 				break;
 				case NEW_URI_ENTERED:
-					fprintf(stderr, "Tab %d: Loading webpage\n", tab_index);
+					fprintf(stderr, "Tab %d: Loading webpage: %s\n", tab_index, tabRcv.req.uri_req.uri);
 					render_web_page_in_tab(tabRcv.req.uri_req.uri, b_window);
 				break;
 				case TAB_KILLED:
@@ -152,11 +157,12 @@ int url_rendering_process(int tab_index, comm_channel *channel, int parent_pid) 
  *					  be blocked until the program terminates.
  */
 int controller_process(comm_channel *channel) {
+	fprintf(stderr, "Current controller's pid is: %d\n", getpid());
 	// Do not need to change code in this function
 	close(channel->child_to_parent_fd[0]);
 	close(channel->parent_to_child_fd[1]);
 	browser_window * b_window = NULL;
-	// Create controler window
+	// Create controller window
 	create_browser(CONTROLLER_TAB, 0, G_CALLBACK(create_new_tab_cb), G_CALLBACK(uri_entered_cb), &b_window, channel);
 	show_browser();
 	free(channel);
@@ -213,6 +219,7 @@ int init_pipe(comm_channel **channel) {
  */
 
 int router_process() {
+	fprintf(stderr, "Main process's pid is: %d\n", getpid());
 	int parent_pid = getpid();
 	comm_channel *channel[MAX_TAB];
 	int i;
@@ -237,27 +244,28 @@ int router_process() {
 	int pid = fork();
 	if (pid == 0) { //child
 		// this is guard-processor for the controller.
-		int guard_pid = fork();
-		if (guard_pid == 0) { // sub-child
-			controller_process(channel[0]);
-			exit(0);
+		int restart_flag = 1;
+		while (restart_flag) {
+			restart_flag = 0;
+			int guard_pid = fork();
+			if (guard_pid == 0) { // sub-child
+				controller_process(channel[0]);
+				exit(0);
+			}
+			else if (guard_pid < 0) {
+				perror("fork error in guard-processor");
+				return -1;
+			}
+			//here is the guard-processor
+			int status;
+			waitpid(guard_pid, &status, 0);
+			if (status != 0) { //unexpected quit
+				fprintf(stderr, "Guard for Controller: Controller met unexpected quit.\n");
+				fprintf(stderr, "Controller: Restarting...\n");
+				restart_flag = 1;
+			}
 		}
-		else if (guard_pid < 0){
-			perror("fork error in guard-processor");
-			return -1;
-		}
-		//here is the guard-processor
-		int status;
-		waitpid(guard_pid, &status, 0);
-		if (status != 0) { //unexpected quit
-			child_req_to_parent new_req;
-			new_req.type = TAB_KILLED;
-			new_req.req.killed_req.tab_index = 0;
-			fprintf(stderr, "Guard for Controller: Controller unexpected quit\n");
-			fprintf(stderr, "Guard for Controller: Sending 'KILL ALL' request to Router as Controller\n");
-			write(channel[0]->child_to_parent_fd[1], &new_req, sizeof(new_req));
-			free(channel[0]);
-		}
+		free(channel[0]);
 		exit(0);
 	}
 	else if (pid < 0) { //parent
@@ -286,7 +294,11 @@ int router_process() {
 				switch (req_from_child.type) {
 					case CREATE_TAB:
 						if (id != 0) {
-							fprintf(stderr, "Router Error: CREATE_TAB must be sent by controller.\n");
+							fprintf(stderr, "Router Error: CREATE_TAB must be sent by controller, but it sent from Tab [%d].\n", id);
+							waitpid(tab_pid_array[id], NULL, 0);
+							printf("Router: Detected Tab [%d]'s unexpected exit. Removed.\n", id);
+							tab_pid_array[id] = 0;
+							free(channel[id]);
 						}
 						else {
 							tab_num = -1;
@@ -325,7 +337,11 @@ int router_process() {
 
 					case NEW_URI_ENTERED:
 						if (id != 0) {
-							fprintf(stderr, "Router Error: NEW_URI_ENTERED must be sent by controller.\n");
+							fprintf(stderr, "Router Error: NEW_URI_ENTERED must be sent by controller, but it sent from Tab [%d].\n", id);
+							waitpid(tab_pid_array[id], NULL, 0);
+							printf("Router: Detected Tab [%d]'s unexpected exit. Removed.\n", id);
+							tab_pid_array[id] = 0;
+							free(channel[id]);
 						}
 						else {
 							int tab_id = req_from_child.req.uri_req.render_in_tab;

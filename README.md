@@ -20,15 +20,16 @@ You just need to use GNU makefile to compile this project.
 * Annelies Odermann
 	* Completed NEW_URI_ENTERED part.
 * Lidiya Dergacheva
-	* TBD.
+	* None
 
 **Usage**
 * Start
 	* Run `./browser` in the terminal to start the browser.
 * Basic Operation
 	* Click the '+' button on the Controller to create a new tab.
-    * Enter URL in the URL-Region and tab number in the Tab-selector Region. We will check whether the tab is existent then load the website on the assigned tab if the tab number entered is valid.
-    * Close the Controller Windows to quit the program.
+	* Enter URL in the URL-Region and tab number in the Tab-selector Region. We will check whether the tab is existent then load the website on the assigned tab if the tab number entered is valid.
+	* Close the Controller Windows to quit the program.
 * Error Handle
-    * We will kill all tab windows and tab processes then quit the program if the Controller meets unexpected exit.
-    * We will kill all tab windows and tab processes if the Router meets unexpected exit. You still need to close the Controller window manually for halting the Controller process.
+	* The Guard-process will restart the Controller if the Controller meets unexpected exit.
+	* We will kill all tab windows and tab processes if the Router meets unexpected exit. You still need to close the Controller window manually for halting the Controller process. Don't worry, it will never leave any zombies processes.
+	* The program will continue running smoothly even if one of its normal tabs meets unexpected exit.
